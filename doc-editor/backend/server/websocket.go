@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -17,17 +18,41 @@ func ServeWS(h *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, _ := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+
+	clientID := uuid.New().String()
 
 	client := &Client{
 		Hub:   h,
-		Conn: conn,
-		Send: make(chan Message, 256),
+		Conn:  conn,
+		Send:  make(chan Message, 256),
 		DocID: docID,
+		ID:    clientID,
 	}
 
 	h.register <- client
 
 	go client.WritePump()
+
+	// Send identity
+	client.Send <- Message{
+		Type:     Identity,
+		ClientID: clientID,
+		DocID:    docID,
+	}
+
+	// Send current document state
+	doc, ok := h.store.GetDocument(docID)
+	if ok {
+		client.Send <- Message{
+			Type:   SyncDocument,
+			DocID:  docID,
+			Blocks: doc.Blocks,
+		}
+	}
+
 	client.ReadPump()
 }

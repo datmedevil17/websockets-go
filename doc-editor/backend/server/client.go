@@ -9,6 +9,7 @@ type Client struct {
 	Conn  *websocket.Conn
 	Send  chan Message
 	DocID string
+	ID    string
 }
 
 func (c *Client) ReadPump() {
@@ -23,10 +24,14 @@ func (c *Client) ReadPump() {
 			break
 		}
 
-		// Update document
-		doc, ok := c.Hub.store.GetDocument(msg.DocID)
-		if ok {
-			doc.Blocks = append(doc.Blocks, msg.Block)
+		msg.ClientID = c.ID
+
+		// Update document only for content changes
+		if msg.Type != CursorMove {
+			doc, ok := c.Hub.store.GetDocument(msg.DocID)
+			if ok {
+				doc.Blocks = append(doc.Blocks, msg.Block)
+			}
 		}
 
 		c.Hub.broadcast <- &msg

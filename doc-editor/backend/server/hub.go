@@ -31,9 +31,26 @@ func (h *Hub) Run() {
 			h.docRooms[c.DocID][c] = true
 
 		case c := <-h.unregister:
-			delete(h.clients, c)
-			delete(h.docRooms[c.DocID], c)
-			close(c.Send)
+			if _, ok := h.clients[c]; ok {
+				// Broadcast client disconnected
+				msg := Message{
+					Type:     ClientDisconnected,
+					ClientID: c.ID,
+					DocID:    c.DocID,
+				}
+				for client := range h.docRooms[c.DocID] {
+					if client != c {
+						select {
+						case client.Send <- msg:
+						default:
+						}
+					}
+				}
+
+				delete(h.clients, c)
+				delete(h.docRooms[c.DocID], c)
+				close(c.Send)
+			}
 
 		case msg := <-h.broadcast:
 			for c := range h.docRooms[msg.DocID] {
